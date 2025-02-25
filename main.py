@@ -41,7 +41,18 @@ def load_keys():
         print(f"Error loading keys: {str(e)}")
     return keys
 
-# Save stock to file with error handling
+# Load used keys from file
+def load_used_keys():
+    used_keys = set()
+    try:
+        if os.path.exists("used_keys.txt"):
+            with open("used_keys.txt", "r") as f:
+                used_keys = set(f.read().splitlines())
+    except Exception as e:
+        print(f"Error loading used keys: {str(e)}")
+    return used_keys
+
+# Save stock to file
 def save_keys(keys):
     try:
         with open("stock.txt", "w") as f:
@@ -52,8 +63,17 @@ def save_keys(keys):
     except Exception as e:
         print(f"Error saving keys: {str(e)}")
 
+# Save used keys to file
+def save_used_keys(used_keys):
+    try:
+        with open("used_keys.txt", "w") as f:
+            f.write("\n".join(used_keys))
+    except Exception as e:
+        print(f"Error saving used keys: {str(e)}")
+
 # Load initial stock
 keys = load_keys()
+used_keys = load_used_keys()
 
 # Check if the user has a role
 def has_role(ctx, role_id):
@@ -105,7 +125,11 @@ async def gen(ctx, key_type: str, amount: int):
         return
 
     generated_keys = [keys[key_type].pop(0) for _ in range(amount)]
+    
+    # Move generated keys to used_keys list
+    used_keys.update(generated_keys)
     save_keys(keys)
+    save_used_keys(used_keys)
 
     try:
         await ctx.author.send(f"🔑 Your `{key_type}` keys: {', '.join(generated_keys)}")
@@ -113,7 +137,9 @@ async def gen(ctx, key_type: str, amount: int):
     except discord.Forbidden:
         for key in generated_keys:
             keys[key_type].insert(0, key)  # Put the keys back if DM fails
+        used_keys.difference_update(generated_keys)  # Remove from used keys
         save_keys(keys)
+        save_used_keys(used_keys)
         await ctx.send("⚠️ I couldn't DM you! Please enable DMs and try again.")
 
 # View stock command (Client only)
@@ -141,7 +167,10 @@ async def hwid(ctx, keys_input: str):
         return
 
     keys_list = [key.strip() for key in keys_input.split(",")]
-    invalid_keys = [key for key in keys_list if key not in [k for key_list in keys.values() for k in key_list]]
+    
+    # Check both stock and used keys
+    all_valid_keys = set(used_keys).union(*keys.values())
+    invalid_keys = [key for key in keys_list if key not in all_valid_keys]
 
     if invalid_keys:
         await ctx.send(f"❌ Invalid keys: {', '.join(invalid_keys)}. Please check the keys and try again.")
@@ -163,27 +192,6 @@ async def shutdown(ctx):
         return
     await ctx.send("🔴 Bot is shutting down...")
     await bot.close()
-
-# Custom Help Command
-@bot.command()
-async def help(ctx):
-    help_message = """**🤖 Available Commands:**
-🔹 `!upload <day|week|month|lifetime> <key1> <key2> ...` *(Admin Only)*
- ➥ Uploads keys to the stock.
-🔹 `!gen <day|week|month|lifetime> <amount>` *(Client Only)*
- ➥ Generates and sends multiple keys from stock via DM.
-🔹 `!view_stock` *(Client Only)*
- ➥ Views available key stock. Sent via DM.
-🔹 `!hwid <key1, key2, ...>` *(Client Only)*
- ➥ Requests HWID binding for specific keys.
-🔹 `!shutdown` *(Admin Only)*
- ➥ Shuts down the bot.
-"""
-    try:
-        await ctx.author.send(help_message)
-        await ctx.send("✅ Help message sent to your DMs.")
-    except discord.Forbidden:
-        await ctx.send("⚠️ I couldn't DM you! Please enable DMs and try again.")
 
 # Start the keep_alive server and run the bot
 keep_alive()
