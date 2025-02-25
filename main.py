@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 import os
 from keep_alive import keep_alive
-import asyncio
 import traceback
 from dotenv import load_dotenv
 
@@ -21,98 +20,50 @@ bot.remove_command("help")
 ADMIN_ROLE_ID = int(os.getenv('ADMIN_ROLE_ID'))
 CLIENT_ROLE_ID = int(os.getenv('CLIENT_ROLE_ID'))
 ADMIN_CHANNEL_ID = int(os.getenv('ADMIN_CHANNEL_ID'))
-CLIENT_CHANNEL_ID = int(os.getenv('CLIENT_CHANNEL_ID'))
-
-# Load stock from file with error handling
-def load_keys():
-    keys = {"day": [], "week": [], "month": [], "lifetime": []}
-    try:
-        if os.path.exists("stock.txt"):
-            with open("stock.txt", "r") as f:
-                lines = f.readlines()
-                current_type = None
-                for line in lines:
-                    line = line.strip()
-                    if line in keys:
-                        current_type = line
-                    elif current_type and line:
-                        keys[current_type].append(line)
-    except Exception as e:
-        print(f"Error loading keys: {str(e)}")
-    return keys
-
-# Load used keys from file
-def load_used_keys():
-    used_keys = set()
-    try:
-        if os.path.exists("used_keys.txt"):
-            with open("used_keys.txt", "r") as f:
-                used_keys = set(f.read().splitlines())
-    except Exception as e:
-        print(f"Error loading used keys: {str(e)}")
-    return used_keys
-
-# Save stock to file
-def save_keys(keys):
-    try:
-        with open("stock.txt", "w") as f:
-            for key_type, key_list in keys.items():
-                f.write(f"{key_type}\n")
-                for key in key_list:
-                    f.write(f"{key}\n")
-    except Exception as e:
-        print(f"Error saving keys: {str(e)}")
-
-# Save used keys to file
-def save_used_keys(used_keys):
-    try:
-        with open("used_keys.txt", "w") as f:
-            f.write("\n".join(used_keys))
-    except Exception as e:
-        print(f"Error saving used keys: {str(e)}")
-
-# Load initial stock
-keys = load_keys()
-used_keys = load_used_keys()
 
 # Check if the user has a role
 def has_role(ctx, role_id):
     return any(role.id == role_id for role in ctx.author.roles)
-
-# Error handler
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.errors.CommandNotFound):
-        await ctx.send("❌ Invalid command. Use `!help` to see available commands.")
-    elif isinstance(error, commands.errors.MissingRequiredArgument):
-        await ctx.send("❌ Missing required argument. Please check `!help` for proper usage.")
-    else:
-        error_msg = f"An error occurred: {str(error)}"
-        print(f"Error details: {traceback.format_exc()}")
-        await ctx.send(error_msg)
 
 @bot.event
 async def on_ready():
     print(f'Bot is ready! Logged in as {bot.user.name}')
     await bot.change_presence(activity=discord.Game(name="!help for commands"))
 
-# Upload command (Admin only)
+# HWID Reset Command
 @bot.command()
-async def upload(ctx, key_type: str, *keys_to_upload):
-    if not has_role(ctx, ADMIN_ROLE_ID):
-        await ctx.send("❌ You do not have permission to upload keys.")
+async def hwid(ctx, key: str):
+    if not has_role(ctx, CLIENT_ROLE_ID):
+        await ctx.send("❌ You do not have permission to request HWID reset.")
         return
+    admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
+    if admin_channel:
+        await admin_channel.send(f"⚙️ HWID reset requested for key `{key}` from `{ctx.author.name}`")
+        await ctx.send(f"✅ Your HWID reset request for key `{key}` has been sent to the admin.")
 
-    key_type = key_type.lower()
-    if key_type not in keys:
-        await ctx.send("❌ Invalid key type. Valid types: `day`, `week`, `month`, `lifetime`.")
+# Freeze Key Command
+@bot.command()
+async def freeze(ctx, key: str):
+    if not has_role(ctx, CLIENT_ROLE_ID):
+        await ctx.send("❌ You do not have permission to freeze keys.")
         return
+    admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
+    if admin_channel:
+        await admin_channel.send(f"🧊 Key `{key}` has been frozen by `{ctx.author.name}`")
+        await ctx.send(f"✅ The key `{key}` has been frozen and reported to the admin.")
 
-    keys[key_type].extend(keys_to_upload)
-    save_keys(keys)
-    await ctx.send(f"✅ Successfully uploaded `{len(keys_to_upload)}` keys to `{key_type}` stock.")
+# Ban Key Command
+@bot.command()
+async def ban(ctx, key: str):
+    if not has_role(ctx, CLIENT_ROLE_ID):
+        await ctx.send("❌ You do not have permission to ban keys.")
+        return
+    admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
+    if admin_channel:
+        await admin_channel.send(f"⛔ Key `{key}` has been banned by `{ctx.author.name}`")
+        await ctx.send(f"✅ The key `{key}` has been banned and reported to the admin.")
 
-# Generate command (Client only)
+# Generate Key Command
 @bot.command()
 async def gen(ctx, key_type: str, amount: int):
     if not has_role(ctx, CLIENT_ROLE_ID):
@@ -120,78 +71,18 @@ async def gen(ctx, key_type: str, amount: int):
         return
 
     key_type = key_type.lower()
-    if key_type not in keys or len(keys[key_type]) < amount:
-        await ctx.send(f"❌ Not enough `{key_type}` keys available in stock.")
+    if key_type not in ["day", "week", "month", "lifetime", "4hour"]:
+        await ctx.send("❌ Invalid key type. Valid types: `day`, `week`, `month`, `lifetime`, `4hour`.")
         return
 
-    generated_keys = [keys[key_type].pop(0) for _ in range(amount)]
-    
-    # Move generated keys to used_keys list
-    used_keys.update(generated_keys)
-    save_keys(keys)
-    save_used_keys(used_keys)
+    # Simulating key generation (replace with actual key logic)
+    generated_keys = [f"{key_type.upper()}-KEY-{i+1}" for i in range(amount)]
 
     try:
         await ctx.author.send(f"🔑 Your `{key_type}` keys: {', '.join(generated_keys)}")
         await ctx.send(f"✅ `{amount}` `{key_type}` key(s) have been sent to your DMs.")
     except discord.Forbidden:
-        for key in generated_keys:
-            keys[key_type].insert(0, key)  # Put the keys back if DM fails
-        used_keys.difference_update(generated_keys)  # Remove from used keys
-        save_keys(keys)
-        save_used_keys(used_keys)
         await ctx.send("⚠️ I couldn't DM you! Please enable DMs and try again.")
-
-# View stock command (Client only)
-@bot.command()
-async def view_stock(ctx):
-    if not has_role(ctx, CLIENT_ROLE_ID):
-        await ctx.send("❌ You do not have permission to view stock.")
-        return
-
-    stock_message = "**📦 Current Stock:**\n"
-    for key_type, key_list in keys.items():
-        stock_message += f"**{key_type.capitalize()}**: `{len(key_list)}` keys\n"
-
-    try:
-        await ctx.author.send(stock_message)
-        await ctx.send("✅ Stock overview has been sent to your DMs.")
-    except discord.Forbidden:
-        await ctx.send("⚠️ I couldn't DM you! Please enable DMs and try again.")
-
-# HWID request command (Client only)
-@bot.command()
-async def hwid(ctx, keys_input: str):
-    if not has_role(ctx, CLIENT_ROLE_ID):
-        await ctx.send("❌ You do not have permission to request HWID binding.")
-        return
-
-    keys_list = [key.strip() for key in keys_input.split(",")]
-    
-    # Check both stock and used keys
-    all_valid_keys = set(used_keys).union(*keys.values())
-    invalid_keys = [key for key in keys_list if key not in all_valid_keys]
-
-    if invalid_keys:
-        await ctx.send(f"❌ Invalid keys: {', '.join(invalid_keys)}. Please check the keys and try again.")
-        return
-
-    admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
-    if admin_channel:
-        for key in keys_list:
-            await admin_channel.send(f"⚙️ HWID bind request for key `{key}` from `{ctx.author.name}`")
-        await ctx.send(f"✅ Your HWID bind request for keys `{', '.join(keys_list)}` has been sent to the admin.")
-    else:
-        await ctx.send("⚠️ Could not find the admin channel.")
-
-# Shutdown command (Admin only)
-@bot.command()
-async def shutdown(ctx):
-    if not has_role(ctx, ADMIN_ROLE_ID):
-        await ctx.send("❌ You do not have permission to shut down the bot.")
-        return
-    await ctx.send("🔴 Bot is shutting down...")
-    await bot.close()
 
 # Start the keep_alive server and run the bot
 keep_alive()
